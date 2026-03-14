@@ -1,0 +1,11 @@
+Model Information:
+* title:	Animal cell 2.0 - annotated in English
+* source:	https://sketchfab.com/3d-models/animal-cell-20-annotated-in-english-0d9f7f4257224975b2ef83a283709b2f
+* author:	montanna (https://sketchfab.com/montanna)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Animal cell 2.0 - annotated in English" (https://sketchfab.com/3d-models/animal-cell-20-annotated-in-english-0d9f7f4257224975b2ef83a283709b2f) by montanna (https://sketchfab.com/montanna) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
