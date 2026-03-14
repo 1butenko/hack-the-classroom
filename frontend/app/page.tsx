@@ -5,24 +5,20 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Card } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
 
 export default function DashboardPage() {
   return (
-    <div className="flex h-screen w-full bg-[#1A69F3] p-6 gap-4 overflow-hidden">
-      {/* Left Column: AI Chat Interface */}
-      <Card className="flex flex-col w-[400px] bg-white rounded-[24px] border-none overflow-hidden shadow-none">
+    <div className="flex h-screen w-full bg-brand p-6 gap-6 overflow-hidden font-sans">
+      <Card className="flex flex-col w-96 bg-white rounded-3xl border-none overflow-hidden shadow-none">
         <ScrollArea className="flex-1 p-6">
           <div className="flex flex-col gap-6">
-            {/* User Message */}
             <div className="flex justify-end">
-              <div className="bg-[#1A69F3] text-white p-4 rounded-2xl rounded-tr-none max-w-[85%] text-sm leading-relaxed">
+              <div className="bg-brand text-white p-4 rounded-2xl rounded-tr-none max-w-[85%] text-sm leading-relaxed">
                 Створи інтерактивне завдання, де учні мають працювати з клітиною, та називати її елементи
               </div>
             </div>
 
-            {/* AI Message */}
-            <div className="flex flex-col gap-4 text-sm text-gray-800 leading-relaxed">
+            <div className="flex flex-col gap-4 text-sm text-gray-800 leading-relaxed font-normal">
               <p>
                 Ось приклад інтерактивного завдання для учнів, де вони працюють із клітиною та називають її елементи.
               </p>
@@ -34,7 +30,7 @@ export default function DashboardPage() {
                 Мета: навчитися розпізнавати та називати основні частини клітини.
               </p>
               <div className="flex flex-col gap-2">
-                <span className="font-semibold">🧩 Завдання 1 — Визнач елемент клітини</span>
+                <span className="text-base font-normal">🧩 Завдання 1 — Визнач елемент клітини</span>
                 <p>
                   Учням показується схема клітини з позначеними цифрами.<br />
                   Їхнє завдання — назвати елемент клітини, який відповідає кожному номеру.
@@ -44,14 +40,13 @@ export default function DashboardPage() {
           </div>
         </ScrollArea>
 
-        {/* Input Area */}
         <div className="p-4 bg-white">
           <div className="flex items-center gap-2 p-1.5 pl-4 border border-gray-200 rounded-2xl">
             <Input 
-              className="border-none shadow-none focus-visible:ring-0 p-0 h-auto text-sm placeholder:text-gray-400"
+              className="border-none shadow-none focus-visible:ring-0 p-0 h-auto text-sm placeholder:text-gray-400 font-normal"
               placeholder="Почніть створювати ваше завдання"
             />
-            <Button className="bg-[#1A69F3] hover:bg-[#1A69F3]/90 rounded-xl h-10 px-4 text-sm font-medium flex items-center gap-2 shrink-0">
+            <Button className="bg-brand hover:opacity-90 rounded-xl h-10 px-4 text-sm font-normal flex items-center gap-2 shrink-0">
               Надіслати
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
@@ -65,20 +60,17 @@ export default function DashboardPage() {
         </div>
       </Card>
 
-      {/* Right Column: Content Preview Area */}
       <div className="flex flex-1 flex-col gap-4">
-        {/* Top Panel */}
-        <Card className="h-[80px] bg-white rounded-[24px] border-none shadow-none" />
+        <Card className="h-20 bg-white rounded-3xl border-none shadow-none" />
 
-        {/* Bottom Panel (Main Content) */}
         <Card 
-          className="flex-1 bg-white rounded-[24px] border-none shadow-none relative flex items-center justify-center overflow-hidden"
+          className="flex-1 bg-white rounded-3xl border-none shadow-none relative flex items-center justify-center overflow-hidden"
           style={{
             backgroundImage: 'radial-gradient(#e5e7eb 1.5px, transparent 1.5px)',
             backgroundSize: '24px 24px'
           }}
         >
-          <div className="relative w-[500px] h-[500px]">
+          <div className="relative w-4/5 h-4/5">
             <img 
               src="https://img.freepik.com/free-vector/internal-structure-animal-cell-white-background_1308-111107.jpg" 
               alt="3D Animal Cell" 

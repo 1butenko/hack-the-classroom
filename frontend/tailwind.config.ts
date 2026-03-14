@@ -9,8 +9,11 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-e-ukraine)", "ui-sans-serif", "system-ui"],
+        sans: ["var(--font-e-ukraine)", "ui-sans-serif", "system-ui", "sans-serif"],
       },
+      colors: {
+        brand: "#1A69F3",
+      }
     },
   },
   plugins: [],

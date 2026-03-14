@@ -9,18 +9,9 @@ const eUkraine = localFont({
       weight: "400",
       style: "normal",
     },
-    {
-      path: "./fonts/e-Ukraine-Medium.otf",
-      weight: "500",
-      style: "normal",
-    },
-    {
-      path: "./fonts/e-Ukraine-Bold.otf",
-      weight: "700",
-      style: "normal",
-    },
   ],
   variable: "--font-e-ukraine",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
