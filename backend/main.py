@@ -39,7 +39,6 @@ prompt_template = ChatPromptTemplate.from_messages([
 ])
 
 def generate_3d_model(refined_prompt: str):
-    """Викликає Meshy API v2 для генерації 3D моделі"""
     url = "https://api.meshy.ai/openapi/v2/text-to-3d"
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}",
@@ -90,7 +89,7 @@ async def handle_prompt(data: PromptRequest):
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str):
-    """Перевірка статусу для Meshy v2"""
+
     url = f"https://api.meshy.ai/openapi/v2/text-to-3d/{task_id}"
     headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
     response = requests.get(url, headers=headers)
