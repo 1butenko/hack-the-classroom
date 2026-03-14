@@ -5,8 +5,23 @@ import "./globals.css";
 const eUkraine = localFont({
   src: [
     {
+      path: "./fonts/e-Ukraine-Light.otf",
+      weight: "300",
+      style: "normal",
+    },
+    {
       path: "./fonts/e-Ukraine-Regular.otf",
       weight: "400",
+      style: "normal",
+    },
+    {
+      path: "./fonts/e-Ukraine-Medium.otf",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/e-Ukraine-Bold.otf",
+      weight: "700",
       style: "normal",
     },
   ],
