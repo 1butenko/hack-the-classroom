@@ -11,8 +11,6 @@ load_dotenv()
 
 app = FastAPI()
 
-# Налаштування API ключів
-# Ключ наданий користувачем: msy_MeTsyL39y0iEOeaJO8Zn28MXVYGcU6XSktn8
 MESHY_API_KEY = os.getenv("MESHY_API_KEY", "msy_MeTsyL39y0iEOeaJO8Zn28MXVYGcU6XSktn8")
 
 class ThreeDPrompt(BaseModel):
@@ -59,7 +57,6 @@ def generate_3d_model(refined_prompt: str):
     if response.status_code not in [200, 201, 202]:
         raise Exception(f"Meshy API error: {response.status_code} - {response.text}")
     
-    # Meshy API v2 зазвичай повертає {"result": "task_id_here"}
     return response.json()
 
 def process_3d_request(user_input: str):
@@ -77,10 +74,9 @@ def process_3d_request(user_input: str):
 async def handle_prompt(data: PromptRequest):
     print(f"\nReceived prompt: {data.prompt}")
     try:
-        # 1. Покращуємо промпт через LLM
+
         refined_data = process_3d_request(data.prompt)
         
-        # 2. Запускаємо генерацію в Meshy v2
         meshy_response = generate_3d_model(refined_data['final_prompt'])
         
         return {
