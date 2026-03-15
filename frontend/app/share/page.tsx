@@ -17,16 +17,13 @@ function ShareContent() {
   return (
     <div className="flex flex-col items-center gap-12 max-w-6xl w-full">
       <div className="flex flex-col lg:flex-row items-center gap-8 w-full justify-center">
-        {/* Left Column: Instructions and Code */}
         <div className="flex flex-col gap-6 w-full max-w-[500px]">
-          {/* Header Badge */}
           <div className="border border-white/40 rounded-full px-8 py-4 text-center bg-white/5 backdrop-blur-sm">
             <span className="text-white text-lg font-medium">
               Приєднайтесь за QR-кодом або кодом доступу
             </span>
           </div>
 
-          {/* Main Code Card */}
           <Card className="bg-white rounded-[40px] p-10 border-none shadow-2xl transition-transform hover:scale-[1.02]">
             <div className="flex flex-col gap-1 mb-6">
               <p className="text-gray-900 text-xl font-medium font-sans">
@@ -46,7 +43,6 @@ function ShareContent() {
           </Card>
         </div>
 
-        {/* Right Column: QR Code */}
         <Card className="bg-white rounded-[40px] p-10 border-none shadow-2xl flex items-center justify-center w-full max-w-[400px] aspect-square text-gray-900 transition-transform hover:scale-[1.02]">
           <div className="relative w-full h-full p-4">
             <img 
@@ -58,7 +54,6 @@ function ShareContent() {
         </Card>
       </div>
 
-      {/* NEW: Action Button for Teacher */}
       <div className="mt-4 animate-bounce-subtle">
         <Link href={`/dashboard/${code}`}>
           <Button 
@@ -75,7 +70,6 @@ function ShareContent() {
   )
 }
 
-// Don't forget to import Users icon
 import { ArrowLeft, Users } from "lucide-react"
 
 export default function TaskSharePage() {
