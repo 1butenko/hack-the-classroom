@@ -20,7 +20,6 @@ load_dotenv()
 
 app = FastAPI()
 
-# Додаємо CORS для фронтенду
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -99,14 +98,12 @@ def generate_3d_model(refined_prompt: str):
 @app.post("/prompt")
 async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session)):
     try:
-        # 1. Створюємо Task у БД
         room_code = generate_room_code()
         new_task = Task(id=room_code, prompt=data.prompt)
         session.add(new_task)
         session.commit()
         session.refresh(new_task)
 
-        # 2. LLM Рефінамент
         technical_chain = prompt_template | llm | parser
         technical_response = technical_chain.invoke({
             "user_input": data.prompt,
@@ -119,10 +116,8 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
             "technical_plan": technical_response["geometry"]
         })
 
-        # 3. Meshy Request
         meshy_result = generate_3d_model(technical_response['final_prompt'])
         
-        # 4. Оновлюємо Task у БД
         new_task.refined_prompt = technical_response['final_prompt']
         new_task.user_feedback = feedback_response.content
         new_task.meshy_task_id = meshy_result.get("result")
@@ -146,7 +141,6 @@ async def get_task_status(task_id: str, session: Session = Depends(get_session))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    # Якщо статус у БД вже SUCCEEDED, віддаємо одразу
     if task.status == "SUCCEEDED" and task.model_url:
         return {
             "status": "SUCCEEDED",
@@ -154,14 +148,12 @@ async def get_task_status(task_id: str, session: Session = Depends(get_session))
             "progress": 100
         }
     
-    # Інакше перевіряємо в Meshy
     if task.meshy_task_id:
         url = f"https://api.meshy.ai/openapi/v2/text-to-3d/{task.meshy_task_id}"
         headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
         response = requests.get(url, headers=headers)
         meshy_data = response.json()
         
-        # Оновлюємо нашу БД, якщо статус змінився
         new_status = meshy_data.get("status")
         if new_status:
             task.status = new_status
@@ -181,7 +173,6 @@ async def join_task(task_id: str, data: ParticipantCreate, session: Session = De
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    # Перевіряємо чи такий учень уже є
     statement = select(Participant).where(Participant.task_id == task_id, Participant.name == data.name)
     participant = session.exec(statement).first()
     
@@ -219,7 +210,6 @@ async def get_dashboard(task_id: str, session: Session = Depends(get_session)):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    # Визначаємо хто онлайн (heartbeat за останні 30 секунд)
     threshold = datetime.utcnow() - timedelta(seconds=30)
     
     participants_list = []
