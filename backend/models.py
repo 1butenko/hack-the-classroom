@@ -7,17 +7,17 @@ class TaskBase(SQLModel):
     refined_prompt: Optional[str] = None
     user_feedback: Optional[str] = None
     meshy_task_id: Optional[str] = None
-    status: str = "PENDING"  # PENDING, PROCESSING, SUCCEEDED, FAILED
+    status: str = "PENDING" 
     model_url: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Task(TaskBase, table=True):
-    id: str = Field(primary_key=True)  # Наш короткий код кімнати
+    id: str = Field(primary_key=True) 
     participants: List["Participant"] = Relationship(back_populates="task")
 
 class ParticipantBase(SQLModel):
     name: str
-    status: str = "joined"  # joined, waiting, viewing, disconnected
+    status: str = "joined" 
     has_viewed: bool = False
     reaction: Optional[str] = None
     last_heartbeat: datetime = Field(default_factory=datetime.utcnow)
