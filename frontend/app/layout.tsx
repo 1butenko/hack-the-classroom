@@ -5,6 +5,16 @@ import "./globals.css";
 const fixelDisplay = localFont({
   src: [
     {
+      path: "./fonts/FixelDisplay-Thin.otf",
+      weight: "100",
+      style: "normal",
+    },
+    {
+      path: "./fonts/FixelDisplay-ExtraLight.otf",
+      weight: "200",
+      style: "normal",
+    },
+    {
       path: "./fonts/FixelDisplay-Light.otf",
       weight: "300",
       style: "normal",
@@ -17,6 +27,11 @@ const fixelDisplay = localFont({
     {
       path: "./fonts/FixelDisplay-Medium.otf",
       weight: "500",
+      style: "normal",
+    },
+    {
+      path: "./fonts/FixelDisplay-SemiBold.otf",
+      weight: "600",
       style: "normal",
     },
     {

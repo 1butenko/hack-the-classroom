@@ -2,19 +2,21 @@ import os
 import requests
 import random
 import string
+import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlmodel import Session, select
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
-from .database import create_db_and_tables, get_session, engine
-from .models import Task, Participant, TaskCreate, ParticipantCreate, ParticipantUpdate
+from database import create_db_and_tables, get_session, engine
+from models import Task, Participant, TaskCreate, ParticipantCreate, ParticipantUpdate, ParticipantSubmit
 
 load_dotenv()
 
@@ -40,29 +42,53 @@ class ThreeDPrompt(BaseModel):
     style: str = Field(description="Visual style like low-poly, realistic, or stylized")
     final_prompt: str = Field(description="A condensed single-string prompt for the 3D generator")
 
+class TaskAnalysis(BaseModel):
+    is_clear: bool = Field(description="Is the educational objective of the task clear and specific?")
+    objective: Optional[str] = Field(description="A clear, 1-sentence educational goal/objective of the task")
+    grading_criteria: Optional[str] = Field(description="Explicit rules for how to grade the student's submission. What specific parts must they generate to get a good score?")
+    feedback: str = Field(description="Feedback to the teacher. If is_clear is False, ask for clarification. If True, confirm success.")
+
+class GradingResult(BaseModel):
+    score: int = Field(description="Score from 1 to 12 based on the student's generated models compared to the teacher's objective.")
+    feedback: str = Field(description="Encouraging and constructive feedback for the student in Ukrainian.")
+
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 parser = JsonOutputParser(pydantic_object=ThreeDPrompt)
+analysis_parser = JsonOutputParser(pydantic_object=TaskAnalysis)
+grading_parser = JsonOutputParser(pydantic_object=GradingResult)
 
 three_d_system_prompt = (
-    "You are an Elite 3D Technical Artist specializing in educational visualization. Your goal is to create "
-    "structurally accurate 3D models with professionally selected color palettes.\n\n"
-    "COLOR & MATERIAL RULES:\n"
-    "1. CONTEXTUAL COLORS: Select colors based on the subject. For biological models (like mitochondria), use classic textbook palettes: vibrant pinks, oranges, and deep purples for contrast. For mechanical parts, use realistic metallic and industrial tones.\n"
-    "2. VISIBILITY: Avoid pitch-black or extremely dark materials. Ensure the Albedo (base color) is bright enough to be clearly visible under studio lighting.\n"
-    "3. CONTRAST: Use a distinct color for each functional part of the object to make them easily distinguishable for students.\n\n"
-    "TECHNICAL SPECIFICATIONS:\n"
-    "1. LIGHTING: Define 'bright studio lighting' and 'multi-point illumination' in the final prompt.\n"
-    "2. GEOMETRY: Focus on 'watertight mesh', 'clean topology', and 'high-poly detail'. Mention specific anatomical features (e.g., 'folded inner cristae', 'outer smooth membrane').\n"
-    "3. OUTPUT: Keywords for final prompt: 'PBR materials', '4k textures', 'vibrant albedo', 'no dark shadows', 'centered at origin', 'y-axis up'.\n\n"
+    "You are a specialized 3D Technical Artist. Convert user concepts into 3D AI prompts.\n"
+    "Focus on clear geometry and simple textbook colors.\n"
     "{format_instructions}"
 )
 
-feedback_system_prompt = (
-    "Ви — приязний та захоплений Творчий Асистент. Ваша мета — надати теплу та цікаву "
-    "відповідь користувачу про 3D-об'єкт, який ви зараз створюєте для нього.\n"
-    "Опишіть, що ви уявили на основі його ідеї, передайте 'вайб' об'єкта та "
-    "скажіть, що магія вже почалася. Пишіть виключно УКРАЇНСЬКОЮ мовою.\n"
-    "Відповідь має бути короткою (2-3 надихаючі речення) і звертатися безпосередньо до користувача."
+analysis_system_prompt = (
+    "Ви — професійний Методист та Освітній Асистент. Ваша роль — проаналізувати запит вчителя на створення 3D завдання.\n\n"
+    "ВАШЕ ЗАВДАННЯ:\n"
+    "1. Визначити, чи зрозуміла навчальна мета завдання (наприклад, 'вивчити будову клітини', 'зібрати модель атома').\n"
+    "2. Якщо мета розмита, встановіть is_clear = false та ввічливо попросіть вчителя уточнити.\n"
+    "3. Якщо мета зрозуміла, встановіть is_clear = true та сформулюйте лаконічну ціль у полі objective.\n"
+    "4. У полі grading_criteria чітко опишіть, що має зробити учень, щоб отримати максимальну оцінку (які об'єкти він має згенерувати).\n"
+    "5. У полі feedback напишіть надихаючу відповідь українською мовою.\n\n"
+    "{format_instructions}"
+)
+
+grading_system_prompt = (
+    "Ви — об'єктивний Вчитель-Асистент. Ваша мета — оцінити роботу учня у 3D лабораторії за 12-бальною шкалою.\n\n"
+    "ДАНІ ДЛЯ ОЦІНЮВАННЯ:\n"
+    "- Мета завдання (від вчителя): {objective}\n"
+    "- Критерії оцінювання: {grading_criteria}\n"
+    "- Побудована сцена (дані учня): {student_data}\n\n"
+    "ІНСТРУКЦІЯ:\n"
+    "1. Проаналізуйте склад сцени (що саме згенерував учень).\n"
+    "2. ВАЖЛИВО: Оцініть ВЗАЄМНЕ РОЗМІЩЕННЯ об'єктів (spatial_data: position [x, y, z]).\n"
+    "   - Чи знаходяться внутрішні елементи (наприклад, ядро, органели) ВСЕРЕДИНІ оболонки?\n"
+    "   - Чи дотримано логічних відстаней між частинами?\n"
+    "   - Якщо координати об'єктів майже однакові, вони накладені один на одного.\n"
+    "3. Поставте оцінку від 1 до 12 (score).\n"
+    "4. Напишіть детальний фідбек українською мовою (feedback), пояснивши, що розміщено правильно, а що ні.\n\n"
+    "{format_instructions}"
 )
 
 prompt_template = ChatPromptTemplate.from_messages([
@@ -70,112 +96,167 @@ prompt_template = ChatPromptTemplate.from_messages([
     ("human", "{user_input}")
 ])
 
-feedback_template = ChatPromptTemplate.from_messages([
-    ("system", feedback_system_prompt),
-    ("human", "The user wants: {user_input}. The technical plan is: {technical_plan}")
+analysis_template = ChatPromptTemplate.from_messages([
+    ("system", analysis_system_prompt),
+    ("human", "{user_input}")
+])
+
+grading_template = ChatPromptTemplate.from_messages([
+    ("system", grading_system_prompt),
+    ("human", "Оцініть цю роботу.")
 ])
 
 def generate_room_code():
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-def generate_3d_model(refined_prompt: str):
-    url = "https://api.meshy.ai/openapi/v2/text-to-3d"
-    headers = {
-        "Authorization": f"Bearer {MESHY_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "mode": "preview",
-        "prompt": refined_prompt,
-        "art_style": "realistic",
-        "should_remesh": False
-    }
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code not in [200, 201, 202]:
-        raise Exception(f"Meshy API error: {response.status_code} - {response.text}")
-    return response.json()
+class TaskUpdate(BaseModel):
+    base_model_config: Optional[dict] = None
+
+@app.patch("/task/{task_id}")
+async def update_task(task_id: str, data: TaskUpdate, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task: raise HTTPException(status_code=404, detail="Task not found")
+    if data.base_model_config is not None:
+        task.base_model_config = json.dumps(data.base_model_config)
+    session.add(task)
+    session.commit()
+    return {"ok": True}
+
+class TaskCreate(SQLModel):
+    prompt: str
+    task_id: Optional[str] = None 
 
 @app.post("/prompt")
 async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session)):
     try:
-        room_code = generate_room_code()
-        new_task = Task(id=room_code, prompt=data.prompt)
-        session.add(new_task)
-        session.commit()
-        session.refresh(new_task)
+        previous_context = ""
+        current_task = None
+        
+        
+        if data.task_id:
+            current_task = session.get(Task, data.task_id)
+            if current_task:
+                previous_context = f"Попередня модель була створена за запитом: {current_task.prompt}. "
 
-        technical_chain = prompt_template | llm | parser
-        technical_response = technical_chain.invoke({
-            "user_input": data.prompt,
+        
+        if not data.task_id:
+            statement = select(Task).where(Task.prompt == data.prompt, Task.status == "SUCCEEDED")
+            existing_task = session.exec(statement).first()
+            if existing_task and existing_task.model_url:
+                return {
+                    "ok": True, 
+                    "is_final": True,
+                    "task_id": existing_task.id, 
+                    "llm_answer": existing_task.user_feedback or "Завдання готове!"
+                }
+
+        
+        analysis_chain = analysis_template | llm | analysis_parser
+        analysis = analysis_chain.invoke({
+            "user_input": previous_context + data.prompt,
+            "format_instructions": analysis_parser.get_format_instructions()
+        })
+
+        if not analysis["is_clear"]:
+            return {
+                "ok": True,
+                "is_final": False, 
+                "llm_answer": analysis["feedback"]
+            }
+
+        technical_response = (prompt_template | llm | parser).invoke({
+            "user_input": previous_context + data.prompt, 
             "format_instructions": parser.get_format_instructions()
         })
-        
-        feedback_chain = feedback_template | llm
-        feedback_response = feedback_chain.invoke({
-            "user_input": data.prompt,
-            "technical_plan": technical_response["geometry"]
-        })
 
-        meshy_result = generate_3d_model(technical_response['final_prompt'])
+        if current_task:
+            
+            current_task.prompt = f"{current_task.prompt} -> {data.prompt}"
+            current_task.description = analysis.get("objective")
+            current_task.grading_criteria = analysis.get("grading_criteria")
+            current_task.user_feedback = analysis["feedback"]
+            current_task.status = "PROCESSING"
+            room_code = current_task.id
+        else:
+            
+            room_code = generate_room_code()
+            current_task = Task(
+                id=room_code, 
+                prompt=data.prompt,
+                description=analysis.get("objective"),
+                grading_criteria=analysis.get("grading_criteria"),
+                user_feedback=analysis["feedback"],
+                status="PROCESSING"
+            )
         
-        new_task.refined_prompt = technical_response['final_prompt']
-        new_task.user_feedback = feedback_response.content
-        new_task.meshy_task_id = meshy_result.get("result")
-        new_task.status = "PROCESSING"
-        session.add(new_task)
+        session.add(current_task)
+        session.commit()
+
+        
+        payload = {
+            "mode": "preview",
+            "prompt": technical_response['final_prompt'],
+            "art_style": "realistic",
+        }
+
+        res = requests.post(
+            "https://api.meshy.ai/openapi/v2/text-to-3d",
+            headers={"Authorization": f"Bearer {MESHY_API_KEY}"},
+            json=payload
+        )
+        
+        meshy_id = res.json().get("result")
+        current_task.meshy_task_id = meshy_id
+        session.add(current_task)
         session.commit()
         
         return {
             "ok": True, 
-            "task_id": room_code,
-            "user_feedback": feedback_response.content,
-            "llm_refinement": technical_response
+            "is_final": True,
+            "task_id": room_code, 
+            "llm_answer": analysis["feedback"]
         }
     except Exception as e:
-        print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"DATABASE ERROR: {e}")
+        return {"ok": False, "error": "Database schema mismatch. Please delete classroom.db and restart server."}
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str, session: Session = Depends(get_session)):
     task = session.get(Task, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    if task.status == "SUCCEEDED" and task.model_url:
-        return {
-            "status": "SUCCEEDED",
-            "model_url": task.model_url,
-            "progress": 100
-        }
+    if not task: raise HTTPException(status_code=404, detail="Task not found")
     
     if task.meshy_task_id:
         url = f"https://api.meshy.ai/openapi/v2/text-to-3d/{task.meshy_task_id}"
-        headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
-        response = requests.get(url, headers=headers)
-        meshy_data = response.json()
+        res = requests.get(url, headers={"Authorization": f"Bearer {MESHY_API_KEY}"})
+        data = res.json()
         
-        new_status = meshy_data.get("status")
-        if new_status:
-            task.status = new_status
-            if new_status == "SUCCEEDED":
-                task.model_url = meshy_data.get("model_urls", {}).get("glb")
-            session.add(task)
-            session.commit()
-            session.refresh(task)
-            
-        return meshy_data
+        task.status = data.get("status", task.status)
+        if task.status == "SUCCEEDED":
+            task.model_url = data.get("model_urls", {}).get("glb")
+        session.add(task)
+        session.commit()
+        return data
 
     return {"status": task.status}
+
+@app.get("/task/{task_id}/participants")
+async def get_task_participants(task_id: str, session: Session = Depends(get_session)):
+    statement = select(Participant).where(Participant.task_id == task_id)
+    participants = session.exec(statement).all()
+    return participants
+
+@app.get("/proxy")
+async def proxy_model(url: str):
+    if ".glbExpires=" in url: url = url.replace(".glbExpires=", ".glb?Expires=")
+    resp = requests.get(url, stream=True)
+    return StreamingResponse(resp.iter_content(chunk_size=4096), media_type="application/octet-stream")
 
 @app.post("/task/{task_id}/join")
 async def join_task(task_id: str, data: ParticipantCreate, session: Session = Depends(get_session)):
     task = session.get(Task, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
+    if not task: raise HTTPException(status_code=404, detail="Task not found")
     statement = select(Participant).where(Participant.task_id == task_id, Participant.name == data.name)
     participant = session.exec(statement).first()
-    
     if not participant:
         participant = Participant(task_id=task_id, name=data.name, status="joined")
         session.add(participant)
@@ -183,52 +264,47 @@ async def join_task(task_id: str, data: ParticipantCreate, session: Session = De
         participant.status = "joined"
         participant.last_heartbeat = datetime.utcnow()
         session.add(participant)
-        
     session.commit()
     return {"ok": True, "participant_id": participant.id}
 
-@app.patch("/task/{task_id}/participant/{name}")
-async def update_participant(task_id: str, name: str, data: ParticipantUpdate, session: Session = Depends(get_session)):
+@app.post("/task/{task_id}/participant/{name}/submit")
+async def submit_work(task_id: str, name: str, data: ParticipantSubmit, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task: raise HTTPException(status_code=404, detail="Task not found")
+    
     statement = select(Participant).where(Participant.task_id == task_id, Participant.name == name)
     participant = session.exec(statement).first()
-    
-    if not participant:
-        raise HTTPException(status_code=404, detail="Participant not found")
-    
-    if data.status: participant.status = data.status
-    if data.has_viewed is not None: participant.has_viewed = data.has_viewed
-    if data.reaction: participant.reaction = data.reaction
-    
-    participant.last_heartbeat = datetime.utcnow()
-    session.add(participant)
-    session.commit()
-    return {"ok": True}
+    if not participant: raise HTTPException(status_code=404, detail="Participant not found")
 
-@app.get("/task/{task_id}/dashboard")
-async def get_dashboard(task_id: str, session: Session = Depends(get_session)):
-    task = session.get(Task, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    threshold = datetime.utcnow() - timedelta(seconds=30)
-    
-    participants_list = []
-    for p in task.participants:
-        is_online = p.last_heartbeat > threshold
-        participants_list.append({
-            "name": p.name,
-            "status": p.status if is_online else "offline",
-            "has_viewed": p.has_viewed,
-            "reaction": p.reaction,
-            "is_online": is_online
-        })
+    try:
         
-    return {
-        "room_code": task.id,
-        "status": task.status,
-        "model_url": task.model_url,
-        "participants": participants_list
-    }
+        grading_chain = grading_template | llm | grading_parser
+        
+        
+        student_scene_info = {
+            "prompts_used": data.prompts_used,
+            "spatial_data": data.spatial_data or []
+        }
+
+        grading_result = grading_chain.invoke({
+            "objective": task.description or "Невідома мета",
+            "grading_criteria": task.grading_criteria or "Оцінюйте загальну якість моделювання",
+            "student_data": json.dumps(student_scene_info, ensure_ascii=False),
+            "format_instructions": grading_parser.get_format_instructions()
+        })
+
+        
+        participant.submission_data = json.dumps(student_scene_info)
+        participant.score = grading_result["score"]
+        participant.ai_feedback = grading_result["feedback"]
+        participant.status = "submitted"
+        session.add(participant)
+        session.commit()
+
+        return {"ok": True, "score": participant.score, "feedback": participant.ai_feedback}
+    except Exception as e:
+        print(f"Grading Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

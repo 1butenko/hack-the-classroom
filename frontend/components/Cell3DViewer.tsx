@@ -2,28 +2,42 @@
 
 import React, { Suspense } from "react"
 import { Canvas } from "@react-three/fiber"
-import { OrbitControls, useGLTF, Stage } from "@react-three/drei"
+import { OrbitControls, useGLTF, PivotControls, Environment } from "@react-three/drei"
 
 function Model({ url }: { url: string }) {
   const { scene } = useGLTF(url)
-  return <primitive object={scene} scale={1.5} />
+  const clonedScene = React.useMemo(() => scene.clone(true), [scene])
+  return <primitive object={clonedScene} scale={1.5} />
 }
 
-export default function Cell3DViewer({ modelUrl }: { modelUrl?: string | null }) {
+export default function Cell3DViewer({ models = [] }: { models?: string[] }) {
   return (
-    <div className="w-full h-full min-h-[400px]">
-      <Canvas shadows camera={{ position: [0, 0, 5], fov: 45 }}>
+    <div style={{ width: "100%", height: "100%", minHeight: "500px" }} className="bg-slate-50">
+      <Canvas shadows camera={{ position: [10, 10, 10], fov: 40 }}>
+        <color attach="background" args={['#ffffff']} />
         <ambientLight intensity={1} />
-        <directionalLight position={[10, 10, 10]} intensity={2} />
+        <pointLight position={[10, 10, 10]} intensity={1.5} />
+        <Environment preset="city" />
+        
         <Suspense fallback={null}>
-          {modelUrl ? (
-            <Stage environment="city" intensity={0.5}>
-              <Model url={modelUrl} />
-            </Stage>
-          ) : (
-            <gridHelper args={[10, 10, 0xcccccc, 0xeeeeee]} rotation={[Math.PI / 2, 0, 0]} />
-          )}
-          <OrbitControls enableZoom={true} autoRotate={!modelUrl ? false : true} />
+          <group>
+            {}
+            <gridHelper args={[20, 20, 0x1A69F3, 0xD1D5DB]} />
+            
+            {models.map((url, index) => (
+              <PivotControls 
+                key={`${url}-${index}`}
+                activeAxes={[true, true, true]} 
+                depthTest={false} 
+                scale={0.75}
+                fixed={false}
+                offset={[index * 2, 0, 0]}
+              >
+                <Model url={url} />
+              </PivotControls>
+            ))}
+          </group>
+          <OrbitControls makeDefault enableDamping={true} />
         </Suspense>
       </Canvas>
     </div>
