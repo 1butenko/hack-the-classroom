@@ -2,30 +2,30 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
-const eUkraine = localFont({
+const fixelDisplay = localFont({
   src: [
     {
-      path: "./fonts/e-Ukraine-Light.otf",
+      path: "./fonts/FixelDisplay-Light.otf",
       weight: "300",
       style: "normal",
     },
     {
-      path: "./fonts/e-Ukraine-Regular.otf",
+      path: "./fonts/FixelDisplay-Regular.otf",
       weight: "400",
       style: "normal",
     },
     {
-      path: "./fonts/e-Ukraine-Medium.otf",
+      path: "./fonts/FixelDisplay-Medium.otf",
       weight: "500",
       style: "normal",
     },
     {
-      path: "./fonts/e-Ukraine-Bold.otf",
+      path: "./fonts/FixelDisplay-Bold.otf",
       weight: "700",
       style: "normal",
     },
   ],
-  variable: "--font-e-ukraine",
+  variable: "--font-fixel-display",
   display: "swap",
 });
 
@@ -41,7 +41,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${eUkraine.variable} font-sans antialiased`}>
+      <body className={`${fixelDisplay.variable} font-sans antialiased`}>
         {children}
       </body>
     </html>

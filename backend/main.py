@@ -1,7 +1,10 @@
 import os
 import requests
+import json
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -10,6 +13,14 @@ from langchain_core.output_parsers import JsonOutputParser
 load_dotenv()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 MESHY_API_KEY = os.getenv("MESHY_API_KEY", "msy_MeTsyL39y0iEOeaJO8Zn28MXVYGcU6XSktn8")
 
@@ -22,10 +33,8 @@ class ThreeDPrompt(BaseModel):
 class PromptRequest(BaseModel):
     prompt: str
 
-
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 parser = JsonOutputParser(pydantic_object=ThreeDPrompt)
-
 
 three_d_system_prompt = (
     "You are an Elite 3D Technical Artist and Master Sculptor. Your mission is to translate vague user concepts "
@@ -42,6 +51,7 @@ three_d_system_prompt = (
     "{format_instructions}"
 )
 
+# Промпт для дружнього фідбеку користувачу (українською мовою)
 feedback_system_prompt = (
     "Ви — приязний та захоплений Творчий Асистент. Ваша мета — надати теплу та цікаву "
     "відповідь користувачу про 3D-об'єкт, який ви зараз створюєте для нього.\n"
@@ -61,6 +71,10 @@ feedback_template = ChatPromptTemplate.from_messages([
 ])
 
 def generate_3d_model(refined_prompt: str):
+    if not MESHY_API_KEY:
+        print("Warning: MESHY_API_KEY not found. Returning mock.")
+        return {"result": "mock_task_id"}
+        
     url = "https://api.meshy.ai/openapi/v2/text-to-3d"
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}",
@@ -74,7 +88,6 @@ def generate_3d_model(refined_prompt: str):
     }
     
     response = requests.post(url, headers=headers, json=payload)
-    
     if response.status_code not in [200, 201, 202]:
         raise Exception(f"Meshy API error: {response.status_code} - {response.text}")
     
@@ -100,27 +113,47 @@ async def handle_prompt(data: PromptRequest):
     print(f"\nReceived prompt: {data.prompt}")
     try:
         refined_data, user_feedback = process_3d_request(data.prompt)
-        
         meshy_response = generate_3d_model(refined_data['final_prompt'])
+        
+        task_id = meshy_response.get("result")
         
         return {
             "ok": True, 
-            "user_feedback": user_feedback, 
-            "llm_refinement": refined_data,
-            "meshy_result": meshy_response
+            "llm_answer": user_feedback,
+            "task_id": task_id
         }
     except Exception as e:
         print(f"Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        return {"ok": False, "error": str(e)}
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str):
-
+    if task_id == "mock_task_id" or not MESHY_API_KEY:
+        return {
+            "status": "SUCCEEDED", 
+            "model_urls": {"glb": "/cell/scene.gltf"},
+            "progress": 100
+        }
+        
     url = f"https://api.meshy.ai/openapi/v2/text-to-3d/{task_id}"
     headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
     response = requests.get(url, headers=headers)
     return response.json()
+
+@app.get("/proxy")
+async def proxy_model(url: str):
+    # Fix for potential missing '?' in Meshy signed URLs
+    if ".glbExpires=" in url:
+        url = url.replace(".glbExpires=", ".glb?Expires=")
+        
+    try:
+        resp = requests.get(url, stream=True)
+        return StreamingResponse(
+            resp.iter_content(chunk_size=4096),
+            media_type="application/octet-stream"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
