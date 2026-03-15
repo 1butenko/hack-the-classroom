@@ -22,12 +22,11 @@ class ThreeDPrompt(BaseModel):
 class PromptRequest(BaseModel):
     prompt: str
 
-# ... (класи та налаштування залишаються)
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 parser = JsonOutputParser(pydantic_object=ThreeDPrompt)
 
-# Промпт для технічної генерації
+
 three_d_system_prompt = (
     "You are an Elite 3D Technical Artist and Master Sculptor. Your mission is to translate vague user concepts "
     "into high-fidelity, industrial-grade 3D asset specifications for state-of-the-art generative AI.\n\n"
@@ -43,7 +42,6 @@ three_d_system_prompt = (
     "{format_instructions}"
 )
 
-# Промпт для дружнього фідбеку користувачу (українською мовою)
 feedback_system_prompt = (
     "Ви — приязний та захоплений Творчий Асистент. Ваша мета — надати теплу та цікаву "
     "відповідь користувачу про 3D-об'єкт, який ви зараз створюєте для нього.\n"
@@ -63,7 +61,6 @@ feedback_template = ChatPromptTemplate.from_messages([
 ])
 
 def generate_3d_model(refined_prompt: str):
-    # ... (код функції без змін)
     url = "https://api.meshy.ai/openapi/v2/text-to-3d"
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}",
@@ -84,14 +81,12 @@ def generate_3d_model(refined_prompt: str):
     return response.json()
 
 def process_3d_request(user_input: str):
-    # 1. Генеруємо технічний план
     technical_chain = prompt_template | llm | parser
     technical_response = technical_chain.invoke({
         "user_input": user_input,
         "format_instructions": parser.get_format_instructions()
     })
     
-    # 2. Генеруємо дружній фідбек
     feedback_chain = feedback_template | llm
     feedback_response = feedback_chain.invoke({
         "user_input": user_input,
@@ -104,15 +99,13 @@ def process_3d_request(user_input: str):
 async def handle_prompt(data: PromptRequest):
     print(f"\nReceived prompt: {data.prompt}")
     try:
-        # Отримуємо і технічні дані, і фідбек
         refined_data, user_feedback = process_3d_request(data.prompt)
         
-        # Запускаємо генерацію
         meshy_response = generate_3d_model(refined_data['final_prompt'])
         
         return {
             "ok": True, 
-            "user_feedback": user_feedback, # Ось ваш новий фідбек!
+            "user_feedback": user_feedback, 
             "llm_refinement": refined_data,
             "meshy_result": meshy_response
         }
