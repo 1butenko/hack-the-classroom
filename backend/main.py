@@ -22,9 +22,12 @@ class ThreeDPrompt(BaseModel):
 class PromptRequest(BaseModel):
     prompt: str
 
+# ... (класи та налаштування залишаються)
+
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 parser = JsonOutputParser(pydantic_object=ThreeDPrompt)
 
+# Промпт для технічної генерації
 three_d_system_prompt = (
     "You are an Elite 3D Technical Artist and Master Sculptor. Your mission is to translate vague user concepts "
     "into high-fidelity, industrial-grade 3D asset specifications for state-of-the-art generative AI.\n\n"
@@ -40,12 +43,27 @@ three_d_system_prompt = (
     "{format_instructions}"
 )
 
+# Промпт для дружнього фідбеку користувачу (українською мовою)
+feedback_system_prompt = (
+    "Ви — приязний та захоплений Творчий Асистент. Ваша мета — надати теплу та цікаву "
+    "відповідь користувачу про 3D-об'єкт, який ви зараз створюєте для нього.\n"
+    "Опишіть, що ви уявили на основі його ідеї, передайте 'вайб' об'єкта та "
+    "скажіть, що магія вже почалася. Пишіть виключно УКРАЇНСЬКОЮ мовою.\n"
+    "Відповідь має бути короткою (2-3 надихаючі речення) і звертатися безпосередньо до користувача."
+)
+
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", three_d_system_prompt),
     ("human", "{user_input}")
 ])
 
+feedback_template = ChatPromptTemplate.from_messages([
+    ("system", feedback_system_prompt),
+    ("human", "The user wants: {user_input}. The technical plan is: {technical_plan}")
+])
+
 def generate_3d_model(refined_prompt: str):
+    # ... (код функції без змін)
     url = "https://api.meshy.ai/openapi/v2/text-to-3d"
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}",
@@ -66,33 +84,42 @@ def generate_3d_model(refined_prompt: str):
     return response.json()
 
 def process_3d_request(user_input: str):
-    chain = prompt_template | llm | parser
-    response = chain.invoke({
+    # 1. Генеруємо технічний план
+    technical_chain = prompt_template | llm | parser
+    technical_response = technical_chain.invoke({
         "user_input": user_input,
         "format_instructions": parser.get_format_instructions()
     })
     
-    print(f"USER CONCEPT: {user_input}")
-    print(f"FINAL 3D PROMPT: {response['final_prompt']}")
-    return response
+    # 2. Генеруємо дружній фідбек
+    feedback_chain = feedback_template | llm
+    feedback_response = feedback_chain.invoke({
+        "user_input": user_input,
+        "technical_plan": technical_response["geometry"]
+    })
+    
+    return technical_response, feedback_response.content
 
 @app.post("/prompt")
 async def handle_prompt(data: PromptRequest):
     print(f"\nReceived prompt: {data.prompt}")
     try:
-
-        refined_data = process_3d_request(data.prompt)
+        # Отримуємо і технічні дані, і фідбек
+        refined_data, user_feedback = process_3d_request(data.prompt)
         
+        # Запускаємо генерацію
         meshy_response = generate_3d_model(refined_data['final_prompt'])
         
         return {
             "ok": True, 
+            "user_feedback": user_feedback, # Ось ваш новий фідбек!
             "llm_refinement": refined_data,
             "meshy_result": meshy_response
         }
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str):
