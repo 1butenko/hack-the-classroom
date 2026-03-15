@@ -192,11 +192,6 @@ export default function DashboardPage() {
               {isSaving ? "..." : "Зберегти положення"}
             </Button>
           )}
-          {currentTaskId && (
-            <Link href={`/dashboard/${currentTaskId}`}>
-              <Button variant="outline" className="border-gray-200 text-gray-600 rounded-xl px-5 h-10 text-sm font-light">Прогрес учнів</Button>
-            </Link>
-          )}
           <Link href={currentTaskId && !isLoading ? `/share?code=${currentTaskId}` : "#"}>
             <Button variant="outline" disabled={!currentTaskId || isLoading} className="border-brand text-brand rounded-xl px-5 h-10 text-sm font-light">Створити завдання</Button>
           </Link>
