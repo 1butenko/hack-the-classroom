@@ -1,19 +1,26 @@
 import os
 import requests
-import json
+import random
+import string
+from datetime import datetime, timedelta
+from typing import List, Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from sqlmodel import Session, select
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
+from .database import create_db_and_tables, get_session, engine
+from .models import Task, Participant, TaskCreate, ParticipantCreate, ParticipantUpdate
+
 load_dotenv()
 
 app = FastAPI()
 
+# Додаємо CORS для фронтенду
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,6 +28,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
 
 MESHY_API_KEY = os.getenv("MESHY_API_KEY", "msy_MeTsyL39y0iEOeaJO8Zn28MXVYGcU6XSktn8")
 
@@ -30,28 +41,23 @@ class ThreeDPrompt(BaseModel):
     style: str = Field(description="Visual style like low-poly, realistic, or stylized")
     final_prompt: str = Field(description="A condensed single-string prompt for the 3D generator")
 
-class PromptRequest(BaseModel):
-    prompt: str
-
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 parser = JsonOutputParser(pydantic_object=ThreeDPrompt)
 
 three_d_system_prompt = (
-    "You are an Elite 3D Technical Artist and Master Sculptor. Your mission is to translate vague user concepts "
-    "into high-fidelity, industrial-grade 3D asset specifications for state-of-the-art generative AI.\n\n"
-    "Guidelines for excellence:\n"
-    "1. GEOMETRY: Define the structural topology. Describe micro-details, bevels, and physical weight. "
-    "Use terms like 'watertight mesh', 'manifold geometry', 'clean silhouette', and 'high-poly density'.\n"
-    "2. TEXTURE & SHADING: Think in PBR (Physically Based Rendering). Specify Albedo, Roughness, Metallic, "
-    "and Normal maps. Mention surface imperfections like scratches, oxidation, or dust to add realism.\n"
-    "3. STYLE: Reference high-end rendering aesthetics (Unreal Engine 5, Octane Render, Ray-traced) "
-    "or specific artistic movements (Cyberpunk, Biomechanical, Hyper-realistic, Low-poly aesthetic).\n"
-    "4. FINAL PROMPT: This must be a powerhouse of keywords. Use technical anchors: 'centered at origin', "
-    "'high-resolution mesh', 'PBR materials', '4k textures', 'professional topology', 'y-axis up'.\n\n"
+    "You are an Elite 3D Technical Artist specializing in educational visualization. Your goal is to create "
+    "structurally accurate 3D models with professionally selected color palettes.\n\n"
+    "COLOR & MATERIAL RULES:\n"
+    "1. CONTEXTUAL COLORS: Select colors based on the subject. For biological models (like mitochondria), use classic textbook palettes: vibrant pinks, oranges, and deep purples for contrast. For mechanical parts, use realistic metallic and industrial tones.\n"
+    "2. VISIBILITY: Avoid pitch-black or extremely dark materials. Ensure the Albedo (base color) is bright enough to be clearly visible under studio lighting.\n"
+    "3. CONTRAST: Use a distinct color for each functional part of the object to make them easily distinguishable for students.\n\n"
+    "TECHNICAL SPECIFICATIONS:\n"
+    "1. LIGHTING: Define 'bright studio lighting' and 'multi-point illumination' in the final prompt.\n"
+    "2. GEOMETRY: Focus on 'watertight mesh', 'clean topology', and 'high-poly detail'. Mention specific anatomical features (e.g., 'folded inner cristae', 'outer smooth membrane').\n"
+    "3. OUTPUT: Keywords for final prompt: 'PBR materials', '4k textures', 'vibrant albedo', 'no dark shadows', 'centered at origin', 'y-axis up'.\n\n"
     "{format_instructions}"
 )
 
-# Промпт для дружнього фідбеку користувачу (українською мовою)
 feedback_system_prompt = (
     "Ви — приязний та захоплений Творчий Асистент. Ваша мета — надати теплу та цікаву "
     "відповідь користувачу про 3D-об'єкт, який ви зараз створюєте для нього.\n"
@@ -70,11 +76,10 @@ feedback_template = ChatPromptTemplate.from_messages([
     ("human", "The user wants: {user_input}. The technical plan is: {technical_plan}")
 ])
 
+def generate_room_code():
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
 def generate_3d_model(refined_prompt: str):
-    if not MESHY_API_KEY:
-        print("Warning: MESHY_API_KEY not found. Returning mock.")
-        return {"result": "mock_task_id"}
-        
     url = "https://api.meshy.ai/openapi/v2/text-to-3d"
     headers = {
         "Authorization": f"Bearer {MESHY_API_KEY}",
@@ -86,74 +91,154 @@ def generate_3d_model(refined_prompt: str):
         "art_style": "realistic",
         "should_remesh": False
     }
-    
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code not in [200, 201, 202]:
         raise Exception(f"Meshy API error: {response.status_code} - {response.text}")
-    
     return response.json()
 
-def process_3d_request(user_input: str):
-    technical_chain = prompt_template | llm | parser
-    technical_response = technical_chain.invoke({
-        "user_input": user_input,
-        "format_instructions": parser.get_format_instructions()
-    })
-    
-    feedback_chain = feedback_template | llm
-    feedback_response = feedback_chain.invoke({
-        "user_input": user_input,
-        "technical_plan": technical_response["geometry"]
-    })
-    
-    return technical_response, feedback_response.content
-
 @app.post("/prompt")
-async def handle_prompt(data: PromptRequest):
-    print(f"\nReceived prompt: {data.prompt}")
+async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session)):
     try:
-        refined_data, user_feedback = process_3d_request(data.prompt)
-        meshy_response = generate_3d_model(refined_data['final_prompt'])
+        # 1. Створюємо Task у БД
+        room_code = generate_room_code()
+        new_task = Task(id=room_code, prompt=data.prompt)
+        session.add(new_task)
+        session.commit()
+        session.refresh(new_task)
+
+        # 2. LLM Рефінамент
+        technical_chain = prompt_template | llm | parser
+        technical_response = technical_chain.invoke({
+            "user_input": data.prompt,
+            "format_instructions": parser.get_format_instructions()
+        })
         
-        task_id = meshy_response.get("result")
+        feedback_chain = feedback_template | llm
+        feedback_response = feedback_chain.invoke({
+            "user_input": data.prompt,
+            "technical_plan": technical_response["geometry"]
+        })
+
+        # 3. Meshy Request
+        meshy_result = generate_3d_model(technical_response['final_prompt'])
+        
+        # 4. Оновлюємо Task у БД
+        new_task.refined_prompt = technical_response['final_prompt']
+        new_task.user_feedback = feedback_response.content
+        new_task.meshy_task_id = meshy_result.get("result")
+        new_task.status = "PROCESSING"
+        session.add(new_task)
+        session.commit()
         
         return {
             "ok": True, 
-            "llm_answer": user_feedback,
-            "task_id": task_id
+            "task_id": room_code,
+            "user_feedback": feedback_response.content,
+            "llm_refinement": technical_response
         }
     except Exception as e:
         print(f"Error: {e}")
-        return {"ok": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/task/{task_id}")
-async def get_task_status(task_id: str):
-    if task_id == "mock_task_id" or not MESHY_API_KEY:
+async def get_task_status(task_id: str, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Якщо статус у БД вже SUCCEEDED, віддаємо одразу
+    if task.status == "SUCCEEDED" and task.model_url:
         return {
-            "status": "SUCCEEDED", 
-            "model_urls": {"glb": "/cell/scene.gltf"},
+            "status": "SUCCEEDED",
+            "model_url": task.model_url,
             "progress": 100
         }
+    
+    # Інакше перевіряємо в Meshy
+    if task.meshy_task_id:
+        url = f"https://api.meshy.ai/openapi/v2/text-to-3d/{task.meshy_task_id}"
+        headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
+        response = requests.get(url, headers=headers)
+        meshy_data = response.json()
         
-    url = f"https://api.meshy.ai/openapi/v2/text-to-3d/{task_id}"
-    headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
-    response = requests.get(url, headers=headers)
-    return response.json()
+        # Оновлюємо нашу БД, якщо статус змінився
+        new_status = meshy_data.get("status")
+        if new_status:
+            task.status = new_status
+            if new_status == "SUCCEEDED":
+                task.model_url = meshy_data.get("model_urls", {}).get("glb")
+            session.add(task)
+            session.commit()
+            session.refresh(task)
+            
+        return meshy_data
 
-@app.get("/proxy")
-async def proxy_model(url: str):
-    # Fix for potential missing '?' in Meshy signed URLs
-    if ".glbExpires=" in url:
-        url = url.replace(".glbExpires=", ".glb?Expires=")
+    return {"status": task.status}
+
+@app.post("/task/{task_id}/join")
+async def join_task(task_id: str, data: ParticipantCreate, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Перевіряємо чи такий учень уже є
+    statement = select(Participant).where(Participant.task_id == task_id, Participant.name == data.name)
+    participant = session.exec(statement).first()
+    
+    if not participant:
+        participant = Participant(task_id=task_id, name=data.name, status="joined")
+        session.add(participant)
+    else:
+        participant.status = "joined"
+        participant.last_heartbeat = datetime.utcnow()
+        session.add(participant)
         
-    try:
-        resp = requests.get(url, stream=True)
-        return StreamingResponse(
-            resp.iter_content(chunk_size=4096),
-            media_type="application/octet-stream"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    session.commit()
+    return {"ok": True, "participant_id": participant.id}
+
+@app.patch("/task/{task_id}/participant/{name}")
+async def update_participant(task_id: str, name: str, data: ParticipantUpdate, session: Session = Depends(get_session)):
+    statement = select(Participant).where(Participant.task_id == task_id, Participant.name == name)
+    participant = session.exec(statement).first()
+    
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    
+    if data.status: participant.status = data.status
+    if data.has_viewed is not None: participant.has_viewed = data.has_viewed
+    if data.reaction: participant.reaction = data.reaction
+    
+    participant.last_heartbeat = datetime.utcnow()
+    session.add(participant)
+    session.commit()
+    return {"ok": True}
+
+@app.get("/task/{task_id}/dashboard")
+async def get_dashboard(task_id: str, session: Session = Depends(get_session)):
+    task = session.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Визначаємо хто онлайн (heartbeat за останні 30 секунд)
+    threshold = datetime.utcnow() - timedelta(seconds=30)
+    
+    participants_list = []
+    for p in task.participants:
+        is_online = p.last_heartbeat > threshold
+        participants_list.append({
+            "name": p.name,
+            "status": p.status if is_online else "offline",
+            "has_viewed": p.has_viewed,
+            "reaction": p.reaction,
+            "is_online": is_online
+        })
+        
+    return {
+        "room_code": task.id,
+        "status": task.status,
+        "model_url": task.model_url,
+        "participants": participants_list
+    }
 
 if __name__ == "__main__":
     import uvicorn
