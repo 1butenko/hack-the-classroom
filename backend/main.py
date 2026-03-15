@@ -35,7 +35,7 @@ app.add_middleware(
 def on_startup():
     create_db_and_tables()
 
-@app.get("/", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     return {"status": "ok", "message": "Hack The Classroom API is running"}
 
