@@ -25,6 +25,8 @@ def create_db_and_tables():
             ("participant", "submission_data", "VARCHAR"),
             ("participant", "score", "INTEGER"),
             ("participant", "ai_feedback", "VARCHAR"),
+            ("participant", "has_viewed", "BOOLEAN"),
+            ("participant", "reaction", "VARCHAR"),
         ]
         
         for table, column, col_type in columns:

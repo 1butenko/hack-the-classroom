@@ -113,15 +113,38 @@ export default function DashboardPage() {
     }
   }
 
-  const handleTeacherUpdate = () => {
-    // Logic removed as per 3D reset
+  const [saveSuccess, setSaveSuccess] = useState(false)
+
+  const handleTeacherUpdate = (matrix: THREE.Matrix4) => {
+    const position = new THREE.Vector3()
+    const rotation = new THREE.Quaternion()
+    const scale = new THREE.Vector3()
+    matrix.decompose(position, rotation, scale)
+    const euler = new THREE.Euler().setFromQuaternion(rotation)
+    
+    setBaseModelConfig({
+      position: [position.x, position.y, position.z],
+      rotation: [euler.x, euler.y, euler.z],
+      scale: [scale.x, scale.y, scale.z]
+    })
+    // Reset success state if they move it again
+    setSaveSuccess(false)
   }
 
   const saveBaseModelLayout = async () => {
-    if (!currentTaskId) return
+    if (!currentTaskId || !baseModelConfig) return
     setIsSaving(true)
-    // No config to save now
-    alert("Контейнер готовий!")
+    try {
+      await fetch(`http://127.0.0.1:8802/task/${currentTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base_model_config: baseModelConfig })
+      })
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err) {
+      console.error("Error saving layout:", err)
+    }
     setIsSaving(false)
   }
 
@@ -184,8 +207,17 @@ export default function DashboardPage() {
       <div className="flex flex-1 flex-col gap-4">
         <Card className="h-[80px] bg-white rounded-[24px] border-none shadow-none flex items-center justify-end px-6 gap-3">
           {currentTaskId && modelUrl && (
-            <Button onClick={saveBaseModelLayout} disabled={isSaving} variant="outline" className="border-green-200 text-green-600 rounded-xl px-5 h-10 text-sm font-light">
-              {isSaving ? "..." : "Зберегти положення"}
+            <Button 
+              onClick={saveBaseModelLayout} 
+              disabled={isSaving} 
+              variant="outline" 
+              className={`rounded-xl px-5 h-10 text-sm font-light transition-all duration-300 ${
+                saveSuccess 
+                  ? "border-green-500 text-green-600 bg-green-50" 
+                  : "border-green-200 text-green-600 hover:bg-green-50"
+              }`}
+            >
+              {isSaving ? "Зберігаємо..." : saveSuccess ? "Збережено! ✅" : "Зберегти положення"}
             </Button>
           )}
           {currentTaskId && (
@@ -199,7 +231,7 @@ export default function DashboardPage() {
         </Card>
         <Card className="flex-1 bg-white rounded-[24px] border-none relative overflow-hidden flex items-center justify-center">
           <div className="w-full h-full relative">
-            <Teacher3DViewer modelUrl={modelUrl} />
+            <Teacher3DViewer modelUrl={modelUrl} onUpdate={handleTeacherUpdate} />
             
             {/* Оверлей "Згенеруйте модель", який зникає автоматично */}
             {!modelUrl && !isLoading && (

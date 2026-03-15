@@ -25,6 +25,8 @@ class ParticipantBase(SQLModel):
     score: Optional[int] = None 
     ai_feedback: Optional[str] = None 
     last_heartbeat: datetime = Field(default_factory=datetime.utcnow)
+    has_viewed: bool = Field(default=False)
+    reaction: Optional[str] = None
 
 class Participant(ParticipantBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -34,6 +36,7 @@ class Participant(ParticipantBase, table=True):
 class TaskCreate(SQLModel):
     prompt: str
     room_id: Optional[str] = None
+    role: str = "teacher" # Default to teacher for backward compatibility
 
 class ParticipantCreate(SQLModel):
     name: str

@@ -24,7 +24,7 @@ function JoinForm() {
     <Card className="bg-white rounded-[40px] p-12 border-none shadow-2xl w-full max-w-[480px] flex flex-col">
       <div className="flex flex-col gap-8">
         <h1 className="text-[48px] font-bold text-[#1A69F3] tracking-tight leading-none text-left">
-          Приєднатись
+          Приєднатися
         </h1>
 
         <form onSubmit={handleJoin} className="w-full flex flex-col gap-6">
@@ -60,7 +60,7 @@ function JoinForm() {
             type="submit"
             className="h-[54px] rounded-[18px] bg-[#1A69F3] hover:bg-[#1A69F3]/90 text-white text-[18px] font-medium transition-all mt-4 cursor-pointer shadow-none border-none"
           >
-            Приєднатись
+            Приєднатися
           </Button>
         </form>
       </div>

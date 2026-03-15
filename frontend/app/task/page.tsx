@@ -3,13 +3,13 @@
 import React, { useState, useRef, useEffect, Suspense } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, ArrowUpRight, Trash2, User } from "lucide-react"
+import { ArrowLeft, ArrowUpRight, Trash2, User, Info, X } from "lucide-react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
 
 interface ModelState {
-  id: string // unique ID (task_id or 'base')
+  id: string 
   url: string
   prompt: string
   position: [number, number, number]
@@ -33,9 +33,10 @@ function TaskContent() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [grade, setGrade] = useState<{score: number, feedback: string} | null>(null)
   const [status, setStatus] = useState<string>("")
+  const [showTaskInfo, setShowTaskInfo] = useState(false)
+  const [taskDetails, setTaskDetails] = useState({ title: "", description: "" })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Initialization: Join room and fetch teacher's base model
   useEffect(() => {
     if (roomCode !== "UNKNOWN") {
       const initializeTask = async () => {
@@ -61,13 +62,22 @@ function TaskContent() {
     }
   }, [prompt])
 
-  // Generic polling function for both base model and student models
   const pollTaskStatus = async (taskId: string, originalPrompt: string, isBaseModel: boolean = false) => {
     const interval = setInterval(async () => {
       try {
         const response = await fetch(`http://127.0.0.1:8802/task/${taskId}`)
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`)
+        
         const data = await response.json()
         
+        // Update task details if this is the base model poll
+        if (isBaseModel && data) {
+          setTaskDetails({
+            title: data.description || "Завдання 3D Лабораторії",
+            description: data.grading_criteria || "Деталі завдання відсутні."
+          })
+        }
+
         if (!isBaseModel) {
           if (data.status === "REFINING") setStatus(`Покращення... ${data.progress || 0}%`)
           else if (data.status === "PROCESSING") setStatus(`Генерація... ${data.progress || 0}%`)
@@ -79,24 +89,25 @@ function TaskContent() {
             : data.model_url
           
           setModelStates(prev => {
+            const isBase = taskId === roomCode
             const existingIndex = prev.findIndex(s => s.id === taskId)
             
             if (existingIndex >= 0) {
-              // Update existing model (e.g. preview URL replaced by refine URL)
               const next = [...prev]
-              next[existingIndex].url = proxyUrl
+              next[existingIndex] = { ...next[existingIndex], url: proxyUrl }
               return next
             } else {
-              // Add new model
               const baseConfig = data.base_model_config ? JSON.parse(data.base_model_config) : null
-              return [...prev, {
+              const newModel: ModelState = {
                 id: taskId,
                 url: proxyUrl,
                 prompt: originalPrompt,
-                position: isBaseModel ? (baseConfig?.position || [0, 0, 0]) : [0, 0, 0],
-                rotation: isBaseModel ? (baseConfig?.rotation || [0, 0, 0]) : [0, 0, 0],
-                scale: isBaseModel ? (baseConfig?.scale || [1, 1, 1]) : [1, 1, 1]
-              }]
+                position: isBase ? (baseConfig?.position || [0, 0, 0]) : [0, 0, 0],
+                rotation: isBase ? (baseConfig?.rotation || [0, 0, 0]) : [0, 0, 0],
+                scale: isBase ? (baseConfig?.scale || [1, 1, 1]) : [1, 1, 1]
+              }
+              // If it's the base model, put it at the start. Otherwise at the end.
+              return isBase ? [newModel, ...prev.filter(m => m.id !== roomCode)] : [...prev, newModel]
             }
           })
 
@@ -126,7 +137,8 @@ function TaskContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           prompt: currentPrompt,
-          room_id: roomCode !== "UNKNOWN" ? roomCode : null // Link to room, but gets new task_id
+          room_id: roomCode !== "UNKNOWN" ? roomCode : null,
+          role: "student"
         }),
       })
 
@@ -136,7 +148,6 @@ function TaskContent() {
           setStatus(data.llm_answer || "Потрібне уточнення")
           setTimeout(() => { setIsLoading(false); setPrompt(""); }, 2000)
         } else if (data.task_id) {
-          // Poll the NEW task_id for the student's object
           pollTaskStatus(data.task_id, currentPrompt, false)
         }
       } else {
@@ -151,8 +162,14 @@ function TaskContent() {
   }
 
   const submitWork = async () => {
-    if (modelStates.length === 0) return
+    if (modelStates.length === 0) {
+      console.log("DEBUG: No models to submit")
+      return
+    }
     setIsSubmitting(true)
+    console.log("DEBUG: Submitting work for", studentName, "in room", roomCode)
+    console.log("DEBUG: Model States:", modelStates)
+    
     try {
       const res = await fetch(`http://127.0.0.1:8802/task/${roomCode}/participant/${encodeURIComponent(studentName)}/submit`, {
         method: "POST",
@@ -162,9 +179,17 @@ function TaskContent() {
           spatial_data: modelStates
         })
       })
+      
+      console.log("DEBUG: Submit response status:", res.status)
       const data = await res.json()
+      console.log("DEBUG: Submit data:", data)
+      
       if (data.ok) setGrade({ score: data.score, feedback: data.feedback })
-    } catch (e) { console.error(e) }
+      else alert("Помилка при здачі: " + (data.error || "Невідома помилка"))
+    } catch (e) { 
+      console.error("DEBUG: Submit Fetch Error:", e) 
+      alert("Помилка зв'язку з сервером")
+    }
     setIsSubmitting(false)
   }
 
@@ -190,12 +215,42 @@ function TaskContent() {
             Кімната: {roomCode}
           </div>
         </div>
-        {modelStates.length > 0 && !grade && (
-          <Button onClick={submitWork} disabled={isSubmitting || isLoading} className="bg-[#1A69F3] hover:bg-[#1A69F3]/90 text-white rounded-[40px] px-12 h-[74px] text-[24px] font-medium shadow-xl border-none cursor-pointer">
-            {isSubmitting ? "Оцінюємо..." : "Здати роботу"}
+        <div className="flex gap-4 items-center">
+          <Button onClick={() => setShowTaskInfo(true)} variant="outline" className="border-brand/20 text-brand hover:bg-brand/5 gap-2 rounded-xl h-[74px] px-6 text-lg font-light">
+            <Info className="w-5 h-5" /> Про завдання
           </Button>
-        )}
+          {modelStates.length > 0 && !grade && (
+            <Button onClick={submitWork} disabled={isSubmitting || isLoading} className="bg-[#1A69F3] hover:bg-[#1A69F3]/90 text-white rounded-[40px] px-12 h-[74px] text-[24px] font-medium shadow-xl border-none cursor-pointer">
+              {isSubmitting ? "Оцінюємо..." : "Здати роботу"}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {/* Task Info Modal */}
+      {showTaskInfo && (
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-8">
+          <Card className="bg-white rounded-[40px] p-10 shadow-2xl max-w-[600px] w-full relative flex flex-col gap-6 border-none animate-in fade-in zoom-in duration-200">
+            <button 
+              onClick={() => setShowTaskInfo(false)}
+              className="absolute top-8 right-8 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div>
+              <div className="text-brand text-sm font-medium uppercase tracking-wider mb-2">Деталі завдання</div>
+              <h2 className="text-3xl font-light text-gray-900 mb-4 tracking-tight">{taskDetails.title}</h2>
+              <div className="h-px w-full bg-gray-100 my-6" />
+              <div className="text-gray-600 leading-relaxed text-lg font-light space-y-4">
+                <p>{taskDetails.description}</p>
+              </div>
+            </div>
+            <Button onClick={() => setShowTaskInfo(false)} className="mt-4 bg-brand text-white rounded-2xl h-14 text-lg font-medium border-none">
+              Зрозумів, до роботи!
+            </Button>
+          </Card>
+        </div>
+      )}
 
       <div className="flex-1 relative overflow-hidden flex items-center justify-center">
         <div className="absolute inset-0 bg-slate-50/30">
