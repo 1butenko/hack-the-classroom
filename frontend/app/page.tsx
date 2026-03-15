@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card"
 import { ArrowUpRight } from "lucide-react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
+import * as THREE from "three"
 
 const Teacher3DViewer = dynamic(() => import("@/components/Teacher3DViewer"), { 
   ssr: false,

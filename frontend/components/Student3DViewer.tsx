@@ -29,6 +29,7 @@ interface ModelState {
 function Model({ state, index, onUpdate }: { state: ModelState, index: number, onUpdate: (index: number, matrix: THREE.Matrix4) => void }) {
   const { scene } = useGLTF(state.url)
   const clonedScene = useMemo(() => scene.clone(true), [scene])
+  const currentMatrix = React.useRef(new THREE.Matrix4())
   
   const matrix = useMemo(() => {
     const m = new THREE.Matrix4()
@@ -37,8 +38,9 @@ function Model({ state, index, onUpdate }: { state: ModelState, index: number, o
       new THREE.Quaternion().setFromEuler(new THREE.Euler(...state.rotation)),
       new THREE.Vector3(...state.scale)
     )
+    currentMatrix.current.copy(m)
     return m
-  }, [state.id]) // Тільки при створенні об'єкта
+  }, [state.id])
 
   return (
     <PivotControls 
@@ -48,7 +50,8 @@ function Model({ state, index, onUpdate }: { state: ModelState, index: number, o
       scale={0.75}
       fixed={false}
       matrix={matrix}
-      onDragEnd={(m) => onUpdate(index, m)}
+      onDrag={(m) => { currentMatrix.current.copy(m) }}
+      onDragEnd={() => onUpdate(index, currentMatrix.current)}
     >
       <Center top>
         <primitive object={clonedScene} scale={1.5} castShadow receiveShadow />
@@ -94,7 +97,6 @@ export default function Student3DViewer({ modelStates = [], onModelsChange }: { 
               sectionColor="#1A69F3" 
               cellSize={0.5}
               cellColor="#D1D5DB"
-              opacity={0.4}
             />
             
             {modelStates.map((state, index) => (

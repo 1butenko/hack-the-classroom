@@ -8,6 +8,7 @@ import * as THREE from "three"
 function Model({ url, onUpdate }: { url: string, onUpdate?: (matrix: THREE.Matrix4) => void }) {
   const { scene } = useGLTF(url)
   const clonedScene = useMemo(() => scene.clone(true), [scene])
+  const currentMatrix = React.useRef(new THREE.Matrix4())
   
   return (
     <PivotControls 
@@ -15,7 +16,8 @@ function Model({ url, onUpdate }: { url: string, onUpdate?: (matrix: THREE.Matri
       depthTest={false} 
       scale={0.75}
       fixed={false}
-      onDragEnd={(matrix) => onUpdate && onUpdate(matrix)}
+      onDrag={(m) => { currentMatrix.current.copy(m) }}
+      onDragEnd={() => onUpdate && onUpdate(currentMatrix.current)}
     >
       <primitive object={clonedScene} scale={2} />
     </PivotControls>
