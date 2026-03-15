@@ -25,7 +25,7 @@ export default function StudentProgressDashboard() {
 
   const fetchTask = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/task/${taskId}`)
+      const response = await fetch(`http://127.0.0.1:8802/task/${taskId}`)
       if (response.ok) {
         const data = await response.json()
         setTask(data)
@@ -37,7 +37,7 @@ export default function StudentProgressDashboard() {
 
   const fetchParticipants = async () => {
     try {
-      const response = await fetch(`http://127.0.0.1:8000/task/${taskId}/participants`)
+      const response = await fetch(`http://127.0.0.1:8802/task/${taskId}/participants`)
       if (response.ok) {
         const data = await response.json()
         setParticipants(data)

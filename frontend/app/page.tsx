@@ -7,11 +7,10 @@ import { Card } from "@/components/ui/card"
 import { ArrowUpRight } from "lucide-react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
-import * as THREE from "three"
 
 const Teacher3DViewer = dynamic(() => import("@/components/Teacher3DViewer"), { 
   ssr: false,
-  loading: () => <div className="flex items-center justify-center h-full text-gray-400 font-sans text-sm">Loading 3D Model...</div>
+  loading: () => <div className="flex items-center justify-center h-full text-gray-400 font-sans text-sm">Завантаження...</div>
 })
 
 interface Message {
@@ -44,24 +43,29 @@ export default function DashboardPage() {
   const pollTaskStatus = async (taskId: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:8000/task/${taskId}`)
+        const response = await fetch(`http://127.0.0.1:8802/task/${taskId}`)
         const data = await response.json()
         
+        if (data.status === "PROCESSING") {
+          setStatus(`Генерація... ${data.progress || 0}%`)
+        } else if (data.status === "REFINING") {
+          setStatus(`Покращення якості (Refine)... ${data.progress || 0}%`)
+        }
+
+        // Show model if URL is available (either preview during refining, or final)
+        if (data.model_url) {
+          const proxyUrl = data.model_url.startsWith("http") 
+            ? `http://127.0.0.1:8802/proxy?url=${encodeURIComponent(data.model_url)}`
+            : data.model_url
+          setModelUrl(proxyUrl)
+        }
+
         if (data.status === "SUCCEEDED") {
           clearInterval(interval)
           setStatus("Готово!")
-          let finalUrl = data.model_url || (data.model_urls && data.model_urls.glb)
-          if (finalUrl) {
-            const proxyUrl = finalUrl.startsWith("http") 
-              ? `http://127.0.0.1:8000/proxy?url=${encodeURIComponent(finalUrl)}`
-              : finalUrl
-            setModelUrl(proxyUrl)
-          }
         } else if (data.status === "FAILED") {
           clearInterval(interval)
-          setStatus("Помилка")
-        } else {
-          setStatus(`Генерація... ${data.progress || 0}%`)
+          setStatus("Помилка генерації")
         }
       } catch (err) {
         console.error("Polling error:", err)
@@ -78,19 +82,27 @@ export default function DashboardPage() {
     setStatus("Обробка запиту...")
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/prompt", {
+      const response = await fetch("http://127.0.0.1:8802/prompt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           prompt: userMessage,
-          task_id: currentTaskId 
+          room_id: currentTaskId // Send context if we have it
         }),
       })
       const data = await response.json()
+      
       if (data.ok) {
-        if (data.is_final) setCurrentTaskId(data.task_id)
-        setMessages(prev => [...prev, { role: 'ai', content: data.llm_answer || "Модель успішно згенерована!" }])
-        if (data.task_id && data.is_final) pollTaskStatus(data.task_id)
+        if (data.is_final === false) {
+          // AI needs clarification - add to chat and stop loading
+          setMessages(prev => [...prev, { role: 'ai', content: data.llm_answer || "Будь ласка, уточніть ваш запит." }])
+          setIsLoading(false)
+          setStatus("")
+        } else if (data.task_id) {
+          setCurrentTaskId(data.task_id)
+          setMessages(prev => [...prev, { role: 'ai', content: data.llm_answer || "Генеруємо модель..." }])
+          pollTaskStatus(data.task_id)
+        }
       } else {
         setMessages(prev => [...prev, { role: 'ai', content: "Помилка при генерації моделі." }])
         setIsLoading(false)
@@ -101,38 +113,22 @@ export default function DashboardPage() {
     }
   }
 
-  const handleTeacherUpdate = (matrix: THREE.Matrix4) => {
-    const position = new THREE.Vector3()
-    const rotation = new THREE.Quaternion()
-    const scale = new THREE.Vector3()
-    matrix.decompose(position, rotation, scale)
-    const euler = new THREE.Euler().setFromQuaternion(rotation)
-    
-    setBaseModelConfig({
-      position: [position.x, position.y, position.z],
-      rotation: [euler.x, euler.y, euler.z],
-      scale: [scale.x, scale.y, scale.z]
-    })
+  const handleTeacherUpdate = () => {
+    // Logic removed as per 3D reset
   }
 
   const saveBaseModelLayout = async () => {
-    if (!currentTaskId || !baseModelConfig) return
+    if (!currentTaskId) return
     setIsSaving(true)
-    try {
-      await fetch(`http://127.0.0.1:8000/task/${currentTaskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base_model_config: baseModelConfig })
-      })
-      alert("Положення збережено!")
-    } catch (err) {
-      console.error("Error saving layout:", err)
-    }
+    // No config to save now
+    alert("Контейнер готовий!")
     setIsSaving(false)
   }
 
   useEffect(() => {
-    if (status === "Готово!" || status === "Помилка") setIsLoading(false)
+    if (status === "Готово!" || status === "Помилка генерації") {
+      setTimeout(() => setIsLoading(false), 1000)
+    }
   }, [status])
 
   return (
@@ -202,10 +198,27 @@ export default function DashboardPage() {
           </Link>
         </Card>
         <Card className="flex-1 bg-white rounded-[24px] border-none relative overflow-hidden flex items-center justify-center">
-          <div className="w-full h-full relative font-light">
-            <Teacher3DViewer modelUrl={modelUrl} onUpdate={handleTeacherUpdate} />
-            {!modelUrl && !isLoading && <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white text-lg font-light tracking-wide">Згенеруйте модель, щоб почати</div>}
-            {isLoading && status?.includes("Генерація") && <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xl font-bold animate-pulse">{status}</div>}
+          <div className="w-full h-full relative">
+            <Teacher3DViewer modelUrl={modelUrl} />
+            
+            {/* Оверлей "Згенеруйте модель", який зникає автоматично */}
+            {!modelUrl && !isLoading && (
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-10 transition-opacity duration-500">
+                <div className="bg-white/90 px-8 py-4 rounded-3xl shadow-2xl text-gray-900 text-lg font-medium tracking-tight">
+                  Згенеруйте модель, щоб почати
+                </div>
+              </div>
+            )}
+
+            {/* Статус генерації */}
+            {isLoading && (
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-white/20 border-t-brand rounded-full animate-spin" />
+                  <p className="text-white text-xl font-bold animate-pulse tracking-tight">{status}</p>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
       </div>

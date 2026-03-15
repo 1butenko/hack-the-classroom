@@ -1,55 +1,62 @@
 "use client"
 
-import React, { Suspense, useMemo, useRef } from "react"
+import React, { Suspense, useMemo } from "react"
 import { Canvas } from "@react-three/fiber"
-import { OrbitControls, useGLTF, PivotControls, Environment } from "@react-three/drei"
+import { OrbitControls, useGLTF, Environment, ContactShadows, Grid } from "@react-three/drei"
 import * as THREE from "three"
 
-interface Teacher3DViewerProps {
-  modelUrl: string | null
-  onUpdate?: (matrix: THREE.Matrix4) => void
-}
-
-function Model({ url, onUpdate }: { url: string, onUpdate?: (matrix: THREE.Matrix4) => void }) {
+// Компонент самої моделі
+function Model({ url }: { url: string }) {
   const { scene } = useGLTF(url)
+  // Клонуємо сцену, щоб уникнути конфліктів при повторному рендері
   const clonedScene = useMemo(() => scene.clone(true), [scene])
   
   return (
-    <PivotControls 
-      activeAxes={[true, true, true]} 
-      depthTest={false} 
-      scale={0.75}
-      fixed={false}
-      onDragEnd={(matrix) => onUpdate && onUpdate(matrix)}
-    >
-      <primitive object={clonedScene} scale={1.5} />
-    </PivotControls>
+    <primitive 
+      object={clonedScene} 
+      scale={2} 
+      position={[0, 0, 0]} 
+      rotation={[0, 0, 0]} 
+    />
   )
 }
 
-export default function Teacher3DViewer({ modelUrl, onUpdate }: Teacher3DViewerProps) {
+export default function Teacher3DViewer({ modelUrl }: { modelUrl: string | null }) {
   return (
-    <div className="w-full h-full relative">
-      <Canvas shadows camera={{ position: [10, 10, 10], fov: 40 }}>
-        <color attach="background" args={['#f0f9ff']} />
-        <ambientLight intensity={1} />
-        <pointLight position={[10, 10, 10]} intensity={1.5} />
-        <Environment preset="city" />
+    <div className="w-full h-full min-h-[400px] relative bg-[#f8fafc]">
+      <Canvas shadows camera={{ position: [5, 5, 5], fov: 40 }}>
+        {/* Колір фону сцени */}
+        <color attach="background" args={['#f8fafc']} />
+        
+        {/* Освітлення */}
+        <ambientLight intensity={0.8} />
+        <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} shadow-mapSize={[512, 512]} castShadow />
+        <pointLight position={[-10, -10, -10]} intensity={1} />
         
         <Suspense fallback={null}>
           <group>
-            {}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
-              <circleGeometry args={[12, 64]} />
-              <meshStandardMaterial color="#ffffff" opacity={0.8} transparent />
-            </mesh>
+            {/* Допоміжна сітка */}
+            <Grid 
+              infiniteGrid 
+              fadeDistance={50} 
+              fadeStrength={5} 
+              sectionSize={1} 
+              sectionColor="#1A69F3" 
+              sectionThickness={1} 
+              cellSize={0.5}
+              cellColor="#D1D5DB"
+              cellThickness={0.5}
+            />
             
-            <gridHelper args={[24, 24, 0x1A69F3, 0xD1D5DB]} position={[0, 0, 0]} opacity={0.2} transparent />
-            
+            {/* Відображення моделі, якщо є URL */}
             {modelUrl && (
-              <Model url={modelUrl} onUpdate={onUpdate} />
+              <Model url={modelUrl} />
             )}
+            
+            <ContactShadows position={[0, 0, 0]} opacity={0.25} scale={10} blur={1.5} far={0.8} />
           </group>
+          
+          <Environment preset="city" />
           <OrbitControls makeDefault enableDamping={true} />
         </Suspense>
       </Canvas>
