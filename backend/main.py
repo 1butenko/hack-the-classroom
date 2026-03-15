@@ -35,6 +35,10 @@ app.add_middleware(
 def on_startup():
     create_db_and_tables()
 
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Hack The Classroom API is running"}
+
 TRIPO_API_KEY = os.getenv("TRIPO_API_KEY")
 if not TRIPO_API_KEY:
     print("WARNING: TRIPO_API_KEY is not set in .env")
