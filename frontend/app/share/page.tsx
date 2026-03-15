@@ -12,7 +12,7 @@ import { Suspense } from "react"
 function ShareContent() {
   const searchParams = useSearchParams()
   const code = searchParams.get("code") || "ABC-332-FGH"
-  const joinUrl = `http://localhost:3000/join?code=${code}`
+  const joinUrl = `https://vyvchai.vercel.app/join?code=${code}`
 
   return (
     <div className="flex flex-col lg:flex-row items-center gap-8 max-w-6xl w-full justify-center">
@@ -29,7 +29,7 @@ function ShareContent() {
         <Card className="bg-white rounded-[40px] p-10 border-none shadow-2xl">
           <div className="flex flex-col gap-1 mb-6">
             <p className="text-gray-900 text-xl font-medium font-sans">
-              Перейдіть на <span className="text-brand">http://localhost:3000/join</span>
+              Перейдіть на <span className="text-brand">https://vyvchai.vercel.app/join</span>
             </p>
             <p className="text-gray-900 text-xl font-medium font-sans">
               Введіть наступний код:
