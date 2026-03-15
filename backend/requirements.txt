@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlmodel
+langchain-openai
+langchain-core
+python-dotenv
+requests
+pydantic
+pydantic-settings
