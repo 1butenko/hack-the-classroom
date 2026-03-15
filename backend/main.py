@@ -35,7 +35,7 @@ app.add_middleware(
 def on_startup():
     create_db_and_tables()
 
-@app.get("/")
+@app.get("/", methods=["GET", "HEAD"])
 async def root():
     return {"status": "ok", "message": "Hack The Classroom API is running"}
 
@@ -129,20 +129,31 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
 
         # Step 1: Analysis (Teacher vs Student)
         active_template = student_analysis_template if data.role == "student" else analysis_template
-        
+
         analysis = (active_template | llm | analysis_parser).invoke({
             "user_input": previous_context + data.prompt,
             "format_instructions": analysis_parser.get_format_instructions()
         })
 
-        if not analysis["is_clear"]:
-            return {"ok": True, "is_final": False, "llm_answer": analysis["feedback"]}
+        print(f"DEBUG: Analysis Result: {analysis}")
+
+        # Safe access to analysis fields
+        is_clear = analysis.get("is_clear", False)
+        llm_feedback = analysis.get("feedback", "Не вдалося отримати відповідь від Асистента.")
+
+        if not is_clear:
+            return {"ok": True, "is_final": False, "llm_answer": llm_feedback}
 
         # Step 2: Technical Prompt
         tech_res = (prompt_template | llm | parser).invoke({
-            "user_input": previous_context + data.prompt, 
+            "user_input": previous_context + data.prompt,
             "format_instructions": parser.get_format_instructions()
         })
+
+        print(f"DEBUG: Tech Prompt Result: {tech_res}")
+        final_prompt = tech_res.get("final_prompt")
+        if not final_prompt:
+             return {"ok": False, "error": "Не вдалося згенерувати технічний промпт."}
 
         # Step 3: Tripo AI V2 Call (Initial Draft)
         headers = {
@@ -151,12 +162,12 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
         }
         payload = {
             "type": "text_to_model",
-            "prompt": tech_res['final_prompt']
+            "prompt": final_prompt
         }
-        
+
         print(f"DEBUG: Sending to Tripo: {payload}")
         res = requests.post("https://api.tripo3d.ai/v2/openapi/task", headers=headers, json=payload)
-        
+
         if res.status_code != 200:
             print(f"ERROR: Tripo returned status {res.status_code}: {res.text}")
             return {"ok": False, "error": f"Tripo API Error ({res.status_code}): {res.text}"}
@@ -166,7 +177,7 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
             return {"ok": False, "error": f"Tripo Error: {res_data.get('message')}"}
 
         tripo_task_id = res_data.get("data", {}).get("task_id")
-        
+
         # Step 4: Save Task
         task_id = generate_task_id()
         new_task = Task(
@@ -174,7 +185,7 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
             prompt=data.prompt,
             description=analysis.get("objective"),
             grading_criteria=analysis.get("grading_criteria"),
-            user_feedback=analysis["feedback"],
+            user_feedback=llm_feedback,
             meshy_task_id=tripo_task_id,
             status="PROCESSING",
             is_refining=False,
@@ -183,8 +194,7 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
         session.add(new_task)
         session.commit()
 
-        return {"ok": True, "is_final": True, "task_id": task_id, "llm_answer": analysis["feedback"]}
-
+        return {"ok": True, "is_final": True, "task_id": task_id, "llm_answer": llm_feedback}
     except Exception as e:
         print(f"ERROR: {e}")
         return {"ok": False, "error": str(e)}
