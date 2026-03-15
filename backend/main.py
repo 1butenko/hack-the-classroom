@@ -196,8 +196,11 @@ async def handle_prompt(data: TaskCreate, session: Session = Depends(get_session
 
         return {"ok": True, "is_final": True, "task_id": task_id, "llm_answer": llm_feedback}
     except Exception as e:
-        print(f"ERROR: {e}")
-        return {"ok": False, "error": str(e)}
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"CRITICAL ERROR in handle_prompt: {e}")
+        print(f"TRACEBACK: {error_trace}")
+        return {"ok": False, "error": f"Backend Error: {str(e)}"}
 
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str, session: Session = Depends(get_session)):
