@@ -44,7 +44,7 @@ export default function DashboardPage() {
   const pollTaskStatus = async (taskId: string) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:8802/task/${taskId}`)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/task/${taskId}`)
         const data = await response.json()
         
         if (data.status === "PROCESSING") {
@@ -56,7 +56,7 @@ export default function DashboardPage() {
         // Show model if URL is available (either preview during refining, or final)
         if (data.model_url) {
           const proxyUrl = data.model_url.startsWith("http") 
-            ? `http://127.0.0.1:8802/proxy?url=${encodeURIComponent(data.model_url)}`
+            ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/proxy?url=${encodeURIComponent(data.model_url)}`
             : data.model_url
           setModelUrl(proxyUrl)
         }
@@ -83,7 +83,7 @@ export default function DashboardPage() {
     setStatus("Обробка запиту...")
 
     try {
-      const response = await fetch("http://127.0.0.1:8802/prompt", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/prompt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -136,7 +136,7 @@ export default function DashboardPage() {
     if (!currentTaskId || !baseModelConfig) return
     setIsSaving(true)
     try {
-      await fetch(`http://127.0.0.1:8802/task/${currentTaskId}`, {
+      await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/task/${currentTaskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ base_model_config: baseModelConfig })

@@ -41,7 +41,7 @@ function TaskContent() {
     if (roomCode !== "UNKNOWN") {
       const initializeTask = async () => {
         try {
-          await fetch(`http://127.0.0.1:8802/task/${roomCode}/join`, {
+          await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/task/${roomCode}/join`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ name: studentName, task_id: roomCode })
@@ -65,7 +65,7 @@ function TaskContent() {
   const pollTaskStatus = async (taskId: string, originalPrompt: string, isBaseModel: boolean = false) => {
     const interval = setInterval(async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:8802/task/${taskId}`)
+        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/task/${taskId}`)
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`)
         
         const data = await response.json()
@@ -85,7 +85,7 @@ function TaskContent() {
 
         if (data.model_url) {
           const proxyUrl = data.model_url.startsWith("http") 
-            ? `http://127.0.0.1:8802/proxy?url=${encodeURIComponent(data.model_url)}`
+            ? `${process.env.NEXT_PUBLIC_BACKEND_URL}/proxy?url=${encodeURIComponent(data.model_url)}`
             : data.model_url
           
           setModelStates(prev => {
@@ -132,7 +132,7 @@ function TaskContent() {
     setStatus("Обробка запиту...")
 
     try {
-      const response = await fetch("http://127.0.0.1:8802/prompt", {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/prompt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -171,7 +171,7 @@ function TaskContent() {
     console.log("DEBUG: Model States:", modelStates)
     
     try {
-      const res = await fetch(`http://127.0.0.1:8802/task/${roomCode}/participant/${encodeURIComponent(studentName)}/submit`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/task/${roomCode}/participant/${encodeURIComponent(studentName)}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
